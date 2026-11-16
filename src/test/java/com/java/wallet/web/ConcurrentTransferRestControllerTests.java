@@ -4,16 +4,8 @@ import com.java.wallet.WalletApplicationTests;
 import com.java.wallet.model.requests.TransferRequest;
 import org.junit.jupiter.api.Test;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
-import java.util.concurrent.TimeUnit;
-import java.util.function.IntFunction;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -73,32 +65,5 @@ public class ConcurrentTransferRestControllerTests extends WalletApplicationTest
         assertThat(getBalance(source)).isEqualByComparingTo("90.00");
         assertThat(jdbcTemplate.queryForObject("SELECT COUNT(*) FROM transfers WHERE idempotency_key = ?",
                 Integer.class, transferRequest.getIdempotencyKey())).isEqualTo(1);
-    }
-
-//    Releases all tasks at the same instant and returns their results
-    private <T> List<T> runConcurrently(int count, IntFunction<T> task) throws Exception {
-        CountDownLatch startSignal = new CountDownLatch(1);
-        ExecutorService executorService = Executors.newFixedThreadPool(count);
-        try {
-            List<Future<T>> futures = new ArrayList<>();
-            for (int i = 0; i < count; i++) {
-                futures.add(executorService.submit(awaitThenRun(startSignal, task, i)));
-            }
-            startSignal.countDown();
-            List<T> results = new ArrayList<>();
-            for (Future<T> future : futures) {
-                results.add(future.get(30, TimeUnit.SECONDS));
-            }
-            return results;
-        } finally {
-            executorService.shutdownNow();
-        }
-    }
-
-    private <T> Callable<T> awaitThenRun(CountDownLatch startSignal, IntFunction<T> task, int index) {
-        return () -> {
-            startSignal.await();
-            return task.apply(index);
-        };
     }
 }

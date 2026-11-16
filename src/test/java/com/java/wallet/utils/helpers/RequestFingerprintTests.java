@@ -1,5 +1,6 @@
 package com.java.wallet.utils.helpers;
 
+import com.java.wallet.model.requests.CreateWalletRequest;
 import com.java.wallet.model.requests.TransferRequest;
 import org.junit.jupiter.api.Test;
 
@@ -29,6 +30,32 @@ public class RequestFingerprintTests {
     public void differentCurrencyHasDifferentFingerprint() {
         assertThat(RequestFingerprint.of(request("50.00", "KES")))
                 .isNotEqualTo(RequestFingerprint.of(request("50.00", "USD")));
+    }
+
+    @Test
+    public void walletWithoutOpeningBalanceMatchesZeroOpeningBalance() {
+        assertThat(RequestFingerprint.of(walletRequest(null, "KES")))
+                .isEqualTo(RequestFingerprint.of(walletRequest("0.00", "KES")));
+    }
+
+    @Test
+    public void walletWithDifferentOpeningBalanceHasDifferentFingerprint() {
+        assertThat(RequestFingerprint.of(walletRequest("100.00", "KES")))
+                .isNotEqualTo(RequestFingerprint.of(walletRequest("500.00", "KES")));
+    }
+
+    @Test
+    public void walletWithDifferentCurrencyHasDifferentFingerprint() {
+        assertThat(RequestFingerprint.of(walletRequest("100.00", "KES")))
+                .isNotEqualTo(RequestFingerprint.of(walletRequest("100.00", "USD")));
+    }
+
+    private CreateWalletRequest walletRequest(String initialBalance, String currency) {
+        CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
+        createWalletRequest.setCurrency(currency);
+        createWalletRequest.setInitialBalance(initialBalance == null ? null : new BigDecimal(initialBalance));
+        return createWalletRequest;
     }
 
     private TransferRequest request(String amount, String currency) {
