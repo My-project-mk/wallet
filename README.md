@@ -39,11 +39,20 @@ Timestamps use the format `yyyy-MM-dd HH:mm:ss`. Every error returns the same bo
 ### `POST /v1/wallets`: open a wallet
 
 ```json
-{ "currency": "KES", "initial_balance": "100.00" }
+{
+  "idempotency_key": "5f1d8c2e-9b7a-4c3e-8a21-0d6f4b9e7c13",
+  "currency": "KES",
+  "initial_balance": "100.00"
+}
 ```
 
 `201 Created` returns `{ wallet_id, currency, balance, created_date }`. Supported currencies are `KES` and `USD`.
 The opening balance is optional. If present, it is posted as a double-entry deposit from that currency's treasury account.
+
+Wallet creation is idempotent, like transfers. Retrying with the same `idempotency_key` returns the wallet already
+created (`201`, `Idempotent-Replayed: true`), so a double-click or network retry never opens or funds a second wallet.
+The same key with a different body gives `409`; a missing key gives `400`. A missing `initial_balance` and `"0.00"`
+count as the same request.
 
 ### `POST /v1/transfers`: transfer between wallets
 
@@ -78,6 +87,10 @@ TransferRestController ──> IdempotentTransferService ──> IdempotencyServ
                                     └──> TransferService ──> WalletRepository  (SELECT … FOR UPDATE)
                                                 │
                                                 └──> LedgerService            (the only code that moves money)
+
+WalletRestController ──> IdempotentWalletService ──> IdempotencyService       (same key lifecycle)
+                                    │
+                                    └──> WalletService ──> LedgerService       (funds the opening balance)
 ```
 
 ```
@@ -103,7 +116,7 @@ Entities have an internal numeric `id`. The API only ever exposes `public_id` UU
 
 | Table              | Purpose                                                                                       |
 |--------------------|-----------------------------------------------------------------------------------------------|
-| `wallets`          | Current balance. `CHECK (balance >= 0)` for customer wallets enforces the balance guard in the database. |
+| `wallets`          | Current balance. `CHECK (balance >= 0)` for customer wallets enforces the balance guard in the database. `idempotency_key` is `UNIQUE` (empty for treasury accounts). |
 | `transfers`        | One row per money movement. `idempotency_key` is `UNIQUE`.                                    |
 | `ledger_entries`   | Immutable DEBIT and CREDIT rows, each with `balance_after`.                                   |
 | `idempotency_keys` | Key, SHA-256 of the canonical payload, status (`IN_PROGRESS` / `COMPLETED`) and lease timestamp. |
@@ -149,20 +162,23 @@ lost updates.
 
 ### Idempotency
 
+Both `POST /v1/transfers` and `POST /v1/wallets` use the same key lifecycle:
+
 1. **Claim**, in its own short transaction: `INSERT … ON CONFLICT DO NOTHING`. Exactly one concurrent request
    inserts the row and owns the key. The others lock the existing row and compare the payload hash:
    - a different hash gives `409`;
-   - `COMPLETED` replays the stored transfer;
+   - `COMPLETED` replays the stored transfer or wallet;
    - `IN_PROGRESS` gives `425`.
-2. **Execute**: the transfer transaction above. Marking the key `COMPLETED` happens **inside** that transaction, so
-   the money movement and the "done" flag commit atomically. They can never disagree.
-3. **Release on failure**: if the transfer fails (for example with insufficient funds), the key is deleted. Nothing
-   was written, so a retry is safe and is evaluated again.
+2. **Execute**: the transfer (or wallet creation) transaction. Marking the key `COMPLETED` happens **inside** that
+   transaction, so the change and the "done" flag commit atomically. They can never disagree.
+3. **Release on failure**: if the operation fails (for example with insufficient funds), the key is deleted.
+   Nothing was written, so a retry is safe and is evaluated again.
 
-The claim commits before the transfer starts. That is what lets a concurrent duplicate see `IN_PROGRESS` instead
-of blocking. As defence in depth, `transfers.idempotency_key` is also `UNIQUE`.
+The claim commits before the operation starts. That is what lets a concurrent duplicate see `IN_PROGRESS` instead
+of blocking. As defence in depth, `transfers.idempotency_key` and `wallets.idempotency_key` are also `UNIQUE`.
 
-The payload hash is computed over canonical values, so `"50"` and `"50.00"` count as the same request.
+The payload hash is computed over canonical values, so `"50"` and `"50.00"` count as the same request. Wallet and
+transfer requests hash differently, so a key reused across the two endpoints gives `409`.
 
 ## Handling network timeouts
 
@@ -199,7 +215,8 @@ The client never has to guess, and money is never moved twice.
 | `ConcurrentTransferRestControllerTests` | 2×$50 on $60 gives one 201 and one 400; 25×$10 on $100; opposing transfers without deadlock; one key fired 10× concurrently |
 | `IdempotencyServiceImplTests`          | Key lifecycle: claim, conflict, replay, release, reclaim after lease expiry |
 | `WalletRestControllerTests`            | Wallet creation, funding from the treasury, balance and history          |
-| `RequestFingerprintTests`              | Unit tests for request fingerprinting                                    |
+| `WalletIdempotencyRestControllerTests` | Retried wallet creation returns the same wallet and funds it once; 409 on a changed payload; 10 simultaneous duplicates create one wallet |
+| `RequestFingerprintTests`              | Unit tests for transfer and wallet request fingerprinting                |
 
 Integration tests extend `WalletApplicationTests`, which starts the service on a random port against a PostgreSQL
 Testcontainer. They call the API with REST Assured, and each one checks the global ledger invariants after it runs.
