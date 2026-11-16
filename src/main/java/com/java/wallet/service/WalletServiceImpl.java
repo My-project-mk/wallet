@@ -27,23 +27,39 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class WalletServiceImpl implements WalletService {
 
+//    Kept below the idempotency lease, so an abandoned key is only reclaimed once its transaction is dead
+    private static final int TIMEOUT_SECONDS = 10;
+
     private final WalletRepository walletRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
     private final LedgerService ledgerService;
+    private final IdempotencyService idempotencyService;
 
-//    A non-zero opening balance is posted as a double-entry deposit from the currency's treasury account
+//    Runs for an already-claimed idempotency key. A non-zero opening balance is posted as a double-entry deposit
+//    from the currency's treasury account. The wallet and its completed key commit together
     @Override
-    @Transactional
+    @Transactional(timeout = TIMEOUT_SECONDS)
     public WalletDto createWallet(CreateWalletRequest createWalletRequest) {
         Wallet treasury = lockTreasury(createWalletRequest.getCurrency());
-        Wallet wallet = walletRepository.save(buildWallet(createWalletRequest.getCurrency()));
+        Wallet wallet = walletRepository.save(buildWallet(createWalletRequest));
 
         if (hasOpeningBalance(createWalletRequest)) {
             ledgerService.post(TransferType.FUNDING, treasury, wallet, createWalletRequest.getInitialBalance(), null);
         }
 
+        idempotencyService.complete(createWalletRequest.getIdempotencyKey());
         log.info("Created {} wallet {}", wallet.getCurrency(), wallet.getPublicId());
         return DtoConverter.toWalletDto(wallet);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public WalletDto getWalletByIdempotencyKey(UUID idempotencyKey) {
+        return walletRepository.findByIdempotencyKey(idempotencyKey)
+                .map(DtoConverter::toWalletDto)
+                .orElseThrow(() -> new ResourceNotFoundRestApiException()
+                        .developerMessage("No wallet found for idempotency key %s", idempotencyKey)
+                        .userMessage("Sorry. Wallet not found"));
     }
 
     @Override
@@ -63,11 +79,12 @@ public class WalletServiceImpl implements WalletService {
                 .userMessage("Sorry. Currency not supported"));
     }
 
-    private Wallet buildWallet(String currency) {
+    private Wallet buildWallet(CreateWalletRequest createWalletRequest) {
         Wallet wallet = new Wallet();
-        wallet.setCurrency(currency);
+        wallet.setCurrency(createWalletRequest.getCurrency());
         wallet.setBalance(Money.zero());
         wallet.setSystemAccount(false);
+        wallet.setIdempotencyKey(createWalletRequest.getIdempotencyKey());
         return wallet;
     }
 

@@ -2,9 +2,9 @@ package com.java.wallet.web;
 
 import com.java.wallet.model.dto.TransferDto;
 import com.java.wallet.model.dto.TransferResult;
-import com.java.wallet.model.entity.Transfer;
 import com.java.wallet.model.requests.TransferRequest;
 import com.java.wallet.service.IdempotentTransferService;
+import com.java.wallet.utils.helpers.ApiHeaders;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -21,7 +21,7 @@ import org.springframework.web.bind.annotation.RestController;
 @Tag(name = "transfers")
 public class TransferRestController {
 
-    public static final String REPLAYED_HEADER = "Idempotent-Replayed";
+    public static final String REPLAYED_HEADER = ApiHeaders.IDEMPOTENT_REPLAYED;
 
     private final IdempotentTransferService idempotentTransferService;
 

@@ -11,6 +11,7 @@ import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.math.BigDecimal;
+import java.util.UUID;
 
 @Getter
 @Setter
@@ -32,4 +33,8 @@ public class Wallet extends BaseEntity {
 
     @Column(name = "system_account", nullable = false)
     private boolean systemAccount;
+
+//    Null for treasury wallets, which are seeded by the migration
+    @Column(name = "idempotency_key", unique = true)
+    private UUID idempotencyKey;
 }

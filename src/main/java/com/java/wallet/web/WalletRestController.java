@@ -2,9 +2,11 @@ package com.java.wallet.web;
 
 import com.java.wallet.model.dto.WalletBalanceDto;
 import com.java.wallet.model.dto.WalletDto;
-import com.java.wallet.model.entity.Wallet;
+import com.java.wallet.model.dto.WalletResult;
 import com.java.wallet.model.requests.CreateWalletRequest;
+import com.java.wallet.service.IdempotentWalletService;
 import com.java.wallet.service.WalletService;
+import com.java.wallet.utils.helpers.ApiHeaders;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -29,17 +31,22 @@ import java.util.UUID;
 public class WalletRestController {
 
     private final WalletService walletService;
+    private final IdempotentWalletService idempotentWalletService;
 
-    public WalletRestController(WalletService walletService) {
+    public WalletRestController(WalletService walletService, IdempotentWalletService idempotentWalletService) {
         this.walletService = walletService;
+        this.idempotentWalletService = idempotentWalletService;
     }
 
     @PostMapping
-    @Operation(summary = "Create Wallet", description = "Opens a wallet, optionally funded with an opening balance")
+    @Operation(summary = "Create Wallet", description = "Idempotently opens a wallet, optionally funded with an opening "
+            + "balance. A replay of a completed request returns the original wallet with the Idempotent-Replayed header set to true")
     public ResponseEntity<WalletDto> createWallet(@RequestBody @Valid CreateWalletRequest createWalletRequest) {
-        WalletDto walletDto = walletService.createWallet(createWalletRequest);
+        WalletResult walletResult = idempotentWalletService.execute(createWalletRequest);
+        HttpHeaders headers = new HttpHeaders();
+        headers.add(ApiHeaders.IDEMPOTENT_REPLAYED, String.valueOf(walletResult.isReplayed()));
 
-        return new ResponseEntity<>(walletDto, new HttpHeaders(), HttpStatus.CREATED);
+        return new ResponseEntity<>(walletResult.getWallet(), headers, HttpStatus.CREATED);
     }
 
     @GetMapping("/{publicId}/balance")

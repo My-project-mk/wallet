@@ -10,5 +10,7 @@ public interface WalletService {
 
     WalletDto createWallet(CreateWalletRequest createWalletRequest);
 
+    WalletDto getWalletByIdempotencyKey(UUID idempotencyKey);
+
     WalletBalanceDto getWalletBalance(UUID walletPublicId, int limit);
 }

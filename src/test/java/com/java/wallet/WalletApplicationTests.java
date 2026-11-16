@@ -55,18 +55,26 @@ public abstract class WalletApplicationTests {
     }
 
     protected UUID createWallet(String currency, String initialBalance) {
-        CreateWalletRequest createWalletRequest = new CreateWalletRequest();
-        createWalletRequest.setCurrency(currency);
-        createWalletRequest.setInitialBalance(initialBalance == null ? null : new BigDecimal(initialBalance));
-
-        String walletId = given()
-                .contentType(ContentType.JSON)
-                .body(createWalletRequest)
-                .post("/v1/wallets")
+        String walletId = postWallet(walletRequest(currency, initialBalance))
                 .then()
                 .statusCode(201)
                 .extract().path("wallet_id");
         return UUID.fromString(walletId);
+    }
+
+    protected CreateWalletRequest walletRequest(String currency, String initialBalance) {
+        CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
+        createWalletRequest.setCurrency(currency);
+        createWalletRequest.setInitialBalance(initialBalance == null ? null : new BigDecimal(initialBalance));
+        return createWalletRequest;
+    }
+
+    protected Response postWallet(CreateWalletRequest createWalletRequest) {
+        return given()
+                .contentType(ContentType.JSON)
+                .body(createWalletRequest)
+                .post("/v1/wallets");
     }
 
     protected BigDecimal getBalance(UUID walletId) {

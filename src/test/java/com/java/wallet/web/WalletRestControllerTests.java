@@ -21,6 +21,7 @@ public class WalletRestControllerTests extends WalletApplicationTests {
     @Test
     public void createWalletWorks() {
         CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
         createWalletRequest.setCurrency("KES");
         createWalletRequest.setInitialBalance(new BigDecimal("100.00"));
 
@@ -49,6 +50,7 @@ public class WalletRestControllerTests extends WalletApplicationTests {
     @Test
     public void createWalletFailsUnsupportedCurrency() {
         CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
         createWalletRequest.setCurrency("JPY");
 
         given()
@@ -63,6 +65,7 @@ public class WalletRestControllerTests extends WalletApplicationTests {
     @Test
     public void createWalletFailsInvalidCurrency() {
         CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
         createWalletRequest.setCurrency("kes");
 
         given()
@@ -77,6 +80,7 @@ public class WalletRestControllerTests extends WalletApplicationTests {
     @Test
     public void createWalletFailsNegativeOpeningBalance() {
         CreateWalletRequest createWalletRequest = new CreateWalletRequest();
+        createWalletRequest.setIdempotencyKey(UUID.randomUUID());
         createWalletRequest.setCurrency("KES");
         createWalletRequest.setInitialBalance(new BigDecimal("-1.00"));
 

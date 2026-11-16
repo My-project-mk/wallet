@@ -14,6 +14,8 @@ public interface WalletRepository extends JpaRepository<Wallet, Long> {
 
     Optional<Wallet> findByPublicId(UUID publicId);
 
+    Optional<Wallet> findByIdempotencyKey(UUID idempotencyKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select w from Wallet w where w.publicId = :publicId")
     Optional<Wallet> findByPublicIdForUpdate(@Param("publicId") UUID publicId);
